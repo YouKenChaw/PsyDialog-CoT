@@ -12,6 +12,13 @@ from dialogue.utils import print_args
 def setup_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_dir', type=str, default='./data')
+    parser.add_argument('--log_dir', type=str, default='./logs')
+    parser.add_argument('--train_bsz_per_gpu', type=int, default=4)
+    parser.add_argument('--model_name_or_path', type=str, default='baichuan-inc/Baichuan-7B')
+    parser.add_argument('--cache_dir', type=str, default='../.cache')
+    parser.add_argument('--n_epochs', type=int, default=5)
+    parser.add_argument('--log_steps', type=int, default=20)
+    parser.add_argument('--eval_steps', type=int, default=100)
     return parser.parse_args()
 
 
@@ -26,8 +33,7 @@ def main(args):
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, trust_remote_code=True, cache_dir=args.cache_dir)
 
-    model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, trust_remote_code=True,
-                                                 cache_dir=args.cache_dir)
+    model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, trust_remote_code=True, cache_dir=args.cache_dir)
 
     model.transformer.gradient_checkpoint = True
     assert model.transformer.gradient_checkpoint is True

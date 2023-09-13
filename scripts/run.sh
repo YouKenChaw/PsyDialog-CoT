@@ -1,3 +1,4 @@
 #!/bin/bash
 export PYTHONPATH=$(dirname "$0")/..:${PYTHONPATH:-}
-python ./dialogue/scripts/main.py
+accelerate launch --config_file ./packages/accelerate_config.yaml \
+  ./dialogue/scripts/main.py
