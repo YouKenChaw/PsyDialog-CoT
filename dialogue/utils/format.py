@@ -2,6 +2,18 @@ import jsonlines
 import json
 
 
+SPECIAL_TOKENS = {
+    'Patient': '<|patient|>',
+    'Doctor': '<|doctor|>',
+    'System': '<|system|>',
+    'Turn': '<|turn|>',
+    'Stage': '<|stage|>',
+    'Info': '<|info|>',
+    'Summary': '<|summary|>',
+    'Next': '<|next|>'
+}
+
+
 def preprocess(data_dir, save_dir, eos_token='</s>'):
     outputs = []
     with jsonlines.open(data_dir) as raw_data:
