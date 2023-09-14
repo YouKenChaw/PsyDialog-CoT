@@ -47,11 +47,11 @@ def main(args):
         else tokenizer.special_tokens_map["additional_special_tokens"]
     )
     additional_special_tokens = list(set(additional_special_tokens + list(SPECIAL_TOKENS.values())))
-    tokenizer.add_special_tokens({'addition_special_tokens': additional_special_tokens})
+    tokenizer.add_special_tokens({'additional_special_tokens': additional_special_tokens})
 
     model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, trust_remote_code=True, cache_dir=args.cache_dir)
-    model.transformer.gradient_checkpoint = True
-    assert model.transformer.gradient_checkpoint is True
+    model.gradient_checkpoint = True
+    assert model.gradient_checkpoint is True
 
     no_decay = ['bias', 'LayerNorm.weight']
     optimizer_grouped_parameters = [
