@@ -41,7 +41,12 @@ def main(args):
         'pad_token': tokenizer.pad_token,
         'eos_token': tokenizer.eos_token,
     })
-    additional_special_tokens = list(set(list(SPECIAL_TOKENS.values())))
+    additional_special_tokens = (
+        []
+        if "additional_special_tokens" not in tokenizer.special_tokens_map
+        else tokenizer.special_tokens_map["additional_special_tokens"]
+    )
+    additional_special_tokens = list(set(additional_special_tokens + list(SPECIAL_TOKENS.values())))
     tokenizer.add_special_tokens({'addition_special_tokens': additional_special_tokens})
 
     model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, trust_remote_code=True, cache_dir=args.cache_dir)
