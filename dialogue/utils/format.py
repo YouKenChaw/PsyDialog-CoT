@@ -36,4 +36,4 @@ def preprocess(data_dir, save_dir, eos_token='</s>'):
 
 
 if __name__ == '__main__':
-    preprocess('../../data/raw_data/psy_test.jsonl', '../../data/processed_data/dev.json')
+    preprocess('../../data/raw_data/psy_test.jsonl', '../../data/processed_data/psy_dev.json')

@@ -7,6 +7,7 @@ from torch.utils.tensorboard import SummaryWriter
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 from dialogue.utils import print_args
+from dialogue.datasets import PsyDialogueCotDataset
 
 
 def setup_args():
@@ -14,7 +15,7 @@ def setup_args():
     parser.add_argument('--data_dir', type=str, default='./data')
     parser.add_argument('--log_dir', type=str, default='./logs')
     parser.add_argument('--train_bsz_per_gpu', type=int, default=4)
-    parser.add_argument('--model_name_or_path', type=str, default='baichuan-inc/Baichuan-7B')
+    parser.add_argument('--model_name_or_path', type=str, default='../.cache/baichuan2-7b-base')
     parser.add_argument('--cache_dir', type=str, default='../.cache')
     parser.add_argument('--n_epochs', type=int, default=5)
     parser.add_argument('--log_steps', type=int, default=20)
@@ -38,7 +39,7 @@ def main(args):
     model.transformer.gradient_checkpoint = True
     assert model.transformer.gradient_checkpoint is True
 
-    optimizer = torch.optim.AdamW(model.parameters, lr=args.learning_rate)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
 
     train_set = PsyDialogueCotDataset(args.data_dir, tokenizer)
     train_loader = DataLoader(train_set, batch_size=args.train_bsz_per_gpu, shuffle=True, drop_last=True,
