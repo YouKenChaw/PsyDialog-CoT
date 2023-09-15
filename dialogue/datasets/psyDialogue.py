@@ -36,13 +36,13 @@ class PsyDialogueCotDataset(Dataset):
                     cur_no_loss_spans = []
                     cur_turn_ids = self.tokenizer.encode(line)
                     assert isinstance(cur_turn_ids, list) and len(cur_turn_ids) > 0
-                    if len(input_ids + cur_turn_ids) > 4096:
+                    if len(input_ids + cur_turn_ids) > 2048:
                         break
                     input_ids.extend(cur_turn_ids)
                     no_loss_spans.extend(cur_no_loss_spans)
                 if len(input_ids) == len(instruction_ids):
                     continue
-                assert 0 < len(input_ids) <= 4096
+                assert 0 < len(input_ids) <= 2048
                 self.data.append(input_ids)
                 self.no_loss_spans.append(no_loss_spans)
             # torch.save(self.data, data_file)

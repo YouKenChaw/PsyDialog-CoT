@@ -4,4 +4,5 @@ export OMP_NUM_THREADS=1
 export PYTHONPATH=$(dirname "$0")/..:${PYTHONPATH:-}
 accelerate launch --config_file ./packages/accelerate_config.yaml \
   ./dialogue/scripts/main.py \
-  --data_dir ./data/processed_data
+  --data_dir ./data/processed_data \
+  --deepspeed True

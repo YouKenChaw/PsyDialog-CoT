@@ -1,4 +1,5 @@
 import argparse
+import math
 
 import torch
 from torch.utils.data import DataLoader
@@ -12,10 +13,11 @@ from dialogue.datasets import PsyDialogueCotDataset
 def setup_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--random_seed', type=int, default=29)
+    parser.add_argument('--deepspeed', type=bool, default=False)
     parser.add_argument('--data_dir', type=str, default='./data')
     parser.add_argument('--log_dir', type=str, default='./logs')
     parser.add_argument('--output_dir', type=str, default='./outputs')
-    parser.add_argument('--train_bsz_per_gpu', type=int, default=4)
+    parser.add_argument('--train_bsz_per_gpu', type=int, default=2)
     parser.add_argument('--model_name_or_path', type=str, default='../.cache/baichuan2-7b-base')
     parser.add_argument('--cache_dir', type=str, default='../.cache')
     parser.add_argument('--weight_decay', type=float, default=0.1)
@@ -25,6 +27,7 @@ def setup_args():
     parser.add_argument('--log_steps', type=int, default=20)
     parser.add_argument('--eval_steps', type=int, default=100)
     parser.add_argument('--save_steps', type=int, default=500)
+    parser.add_argument('--pad_vocab_size_to_multiple_of', type=int, default=16)
     return parser.parse_args()
 
 
@@ -34,7 +37,8 @@ def main(args):
     if accelerator.is_main_process:
         print_args(args)
 
-    accelerator.state.deepspeed_plugin.deepspeed_config['train_micro_batch_size_per_gpu'] = args.train_bsz_per_gpu
+    if args.deepspeed:
+        accelerator.state.deepspeed_plugin.deepspeed_config['train_micro_batch_size_per_gpu'] = args.train_bsz_per_gpu
 
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, trust_remote_code=True, cache_dir=args.cache_dir)
     tokenizer.add_special_tokens({
@@ -50,6 +54,11 @@ def main(args):
     tokenizer.add_special_tokens({'additional_special_tokens': additional_special_tokens})
 
     model = AutoModelForCausalLM.from_pretrained(args.model_name_or_path, trust_remote_code=True, cache_dir=args.cache_dir)
+    num_embs = model.get_input_embeddings().num_embeddings
+    if len(tokenizer) != num_embs or args.pad_vocab_size_to_multiple_of:
+        p = args.pad_vocab_size_to_multiple_of
+        target_size = len(tokenizer) if not p else math.ceil(len(tokenizer) / p) * p
+        model.resize_token_embeddings(target_size)
     model.gradient_checkpoint = True
     assert model.gradient_checkpoint is True
 
@@ -101,7 +110,7 @@ def main(args):
 
             global_step += 1
             if global_step % args.log_steps == 0 and accelerator.is_main_process:
-                accelerator.print(f'epoch: {epoch + 1}, current step: {batch_cnt}, total_step: {len(train_loader)}, skip: {accelerator.optimizer_step_was_skipped}, loss: {round(train_loss, 5)}, acc: {round(acc, 4)}, lr: {scheduler.get_last_lr([0])}')
+                accelerator.print(f'epoch: {epoch + 1}, current step: {batch_cnt}, total_step: {len(train_loader)}, skip: {accelerator.optimizer_step_was_skipped}, loss: {round(train_loss, 5)}, acc: {round(acc, 4)}, lr: {scheduler.get_last_lr()[0]}')
 
             if global_step % args.eval_steps == 0:
                 torch.cuda.empty_cache()
