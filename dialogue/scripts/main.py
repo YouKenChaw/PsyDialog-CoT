@@ -1,5 +1,6 @@
 import argparse
 import math
+from tqdm import tqdm
 
 import torch
 from torch.utils.data import DataLoader
@@ -23,10 +24,10 @@ def setup_args():
     parser.add_argument('--weight_decay', type=float, default=0.1)
     parser.add_argument('--learning_rate', type=float, default='1e-5')
     parser.add_argument('--warmup_rates', type=float, default=0.2)
-    parser.add_argument('--n_epochs', type=int, default=5)
+    parser.add_argument('--n_epochs', type=int, default=2)
     parser.add_argument('--log_steps', type=int, default=20)
     parser.add_argument('--eval_steps', type=int, default=100)
-    parser.add_argument('--save_steps', type=int, default=500)
+    parser.add_argument('--save_steps', type=int, default=300)
     parser.add_argument('--pad_vocab_size_to_multiple_of', type=int, default=16)
     return parser.parse_args()
 
@@ -90,50 +91,54 @@ def main(args):
     global_step = 0
     metric = Metric(device=torch.cuda.current_device())
 
-    model.train()
-    for epoch in range(args.n_epochs):
-        for batch_cnt, (input_ids, attention_mask, labels) in enumerate(train_loader):
-            if batch_cnt == 1 and epoch == 0:
-                torch.cuda.empty_cache()
-            optimizer.zero_grad()
-            output = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels, return_dict=True)
-            loss = output.loss
+    with tqdm(total=num_training_steps) as pbar:
+        pbar.set_description('Training:')
 
-            metric(output.logits, labels, loss)
-            acc, train_loss = metric.get_metric()
+        model.train()
+        for epoch in range(args.n_epochs):
+            for batch_cnt, (input_ids, attention_mask, labels) in enumerate(train_loader):
+                if batch_cnt == 1 and epoch == 0:
+                    torch.cuda.empty_cache()
+                optimizer.zero_grad()
+                output = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels, return_dict=True)
+                loss = output.loss
 
-            accelerator.backward(loss)
-            optimizer.step()
+                metric(output.logits, labels, loss)
+                acc, train_loss = metric.get_metric()
 
-            if not accelerator.optimizer_step_was_skipped:
-                scheduler.step()
+                accelerator.backward(loss)
+                optimizer.step()
 
-            global_step += 1
-            if global_step % args.log_steps == 0 and accelerator.is_main_process:
-                accelerator.print(f'epoch: {epoch + 1}, current step: {batch_cnt}, total_step: {len(train_loader)}, skip: {accelerator.optimizer_step_was_skipped}, loss: {round(train_loss, 5)}, acc: {round(acc, 4)}, lr: {scheduler.get_last_lr()[0]}')
+                if not accelerator.optimizer_step_was_skipped:
+                    scheduler.step()
 
-            if global_step % args.eval_steps == 0:
-                torch.cuda.empty_cache()
-                model.eval()
+                global_step += 1
+                pbar.update(1)
+                if global_step % args.log_steps == 0 and accelerator.is_main_process:
+                    accelerator.print(f'epoch: {epoch + 1}, current step: {batch_cnt}, total_step: {len(train_loader)}, skip: {accelerator.optimizer_step_was_skipped}, loss: {round(train_loss, 5)}, acc: {round(acc, 4)}, lr: {scheduler.get_last_lr()[0]}')
 
-                dev_metric = Metric(torch.cuda.current_device())
-                for input_ids, attention_mask, labels in dev_loader:
-                    with torch.no_grad():
-                        output = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels, return_dict=True)
+                if global_step % args.eval_steps == 0:
+                    torch.cuda.empty_cache()
+                    model.eval()
 
-                    dev_metric(output.logits, labels, output.loss)
-                dev_acc, dev_loss = dev_metric.get_metric()
+                    dev_metric = Metric(torch.cuda.current_device())
+                    for input_ids, attention_mask, labels in dev_loader:
+                        with torch.no_grad():
+                            output = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels, return_dict=True)
 
-                if accelerator.is_local_main_process:
-                    accelerator.print(f'epoch: {epoch + 1}, step: {batch_cnt}, dev loss: {round(dev_loss, 5)}, dev acc: {round(dev_loss, 4)}')
+                        dev_metric(output.logits, labels, output.loss)
+                    dev_acc, dev_loss = dev_metric.get_metric()
 
-                model.train()
+                    if accelerator.is_local_main_process:
+                        accelerator.print(f'epoch: {epoch + 1}, step: {batch_cnt}, dev loss: {round(dev_loss, 5)}, dev acc: {round(dev_loss, 4)}')
 
-            if global_step % args.save_steps == 0:
-                model.save_checkpoint(args.output_dir, global_step)
+                    model.train()
 
-    if global_step % args.save_step != 0:
-        model.save_checkpoint(args.output_dir, global_step)
+                if global_step % args.save_steps == 0:
+                    model.save_checkpoint(args.output_dir, global_step)
+
+        if global_step % args.save_step != 0:
+            model.save_checkpoint(args.output_dir, global_step)
 
 
 if __name__ == '__main__':
