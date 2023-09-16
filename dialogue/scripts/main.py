@@ -3,6 +3,7 @@ import math
 from tqdm import tqdm
 
 import torch
+import torch.distributed as dist
 from torch.utils.data import DataLoader
 from accelerate import Accelerator
 from transformers import AutoTokenizer, AutoModelForCausalLM, get_cosine_schedule_with_warmup, set_seed
@@ -27,7 +28,7 @@ def setup_args():
     parser.add_argument('--n_epochs', type=int, default=2)
     parser.add_argument('--log_steps', type=int, default=20)
     parser.add_argument('--eval_steps', type=int, default=100)
-    parser.add_argument('--save_steps', type=int, default=300)
+    parser.add_argument('--save_steps', type=int, default=100)
     parser.add_argument('--pad_vocab_size_to_multiple_of', type=int, default=16)
     return parser.parse_args()
 
@@ -83,7 +84,7 @@ def main(args):
     dev_loader = DataLoader(dev_set, batch_size=args.train_bsz_per_gpu, shuffle=False, drop_last=False,
                             collate_fn=train_set.collate_fn)
 
-    num_training_steps = (len(train_loader) * args.n_epochs) // accelerator.gradient_accumulation_steps
+    num_training_steps = (len(train_loader) * args.n_epochs) // (accelerator.gradient_accumulation_steps * dist.get_world_size())
     scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=int(args.warmup_rates * num_training_steps), num_training_steps=num_training_steps)
 
     model, optimizer, train_loader, dev_loader, scheduler = accelerator.prepare(model, optimizer, train_loader, dev_loader, scheduler)
@@ -130,15 +131,15 @@ def main(args):
                     dev_acc, dev_loss = dev_metric.get_metric()
 
                     if accelerator.is_local_main_process:
-                        accelerator.print(f'epoch: {epoch + 1}, step: {batch_cnt}, dev loss: {round(dev_loss, 5)}, dev acc: {round(dev_loss, 4)}')
+                        accelerator.print(f'epoch: {epoch + 1}, step: {batch_cnt}, dev loss: {round(dev_loss, 5)}, dev acc: {round(dev_acc, 4)}')
 
                     model.train()
 
                 if global_step % args.save_steps == 0:
                     model.save_checkpoint(args.output_dir, global_step)
 
-        if global_step % args.save_step != 0:
-            model.save_checkpoint(args.output_dir, global_step)
+    if global_step % args.save_steps != 0:
+        model.save_checkpoint(args.output_dir, global_step)
 
 
 if __name__ == '__main__':
