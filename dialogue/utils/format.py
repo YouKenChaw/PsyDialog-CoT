@@ -24,8 +24,8 @@ def preprocess(data_dir, save_dir, eos_token='</s>'):
                 continue
             conversation = []
             for turn_id, utterance in enumerate(dialog):
-                utterance = utterance.split('.')
-                content = utterance[-1].strip().split('\n')
+                start_index = utterance.find('.')
+                content = utterance[start_index + 1:].strip().split('\n')
                 if len(content) != 2:
                     break
                 patient_str, doctor_str = content[0].split('：'), content[1].split('：')
@@ -47,5 +47,33 @@ def preprocess(data_dir, save_dir, eos_token='</s>'):
         save_file.close()
 
 
+def preprocess4finetune(data_dir, save_dir, eos_token='</s>'):
+    outputs = []
+    with jsonlines.open(data_dir) as raw_data:
+        for line in raw_data:
+            dialogue = line['dialog']
+            history = []
+            for utterance in dialogue:
+                start_index = utterance.find('.')
+                current_turn = utterance[start_index + 1:].strip().split('\n')
+                if len(current_turn) != 2:
+                    break
+                patient_str, doctor_str = current_turn[0], current_turn[-1]
+                if patient_str.split('：')[0] == '患者' and doctor_str.split('：')[0] == '治疗师':
+                    patient_content = '<|patient|>' + patient_str.split('：')[-1] + eos_token
+                    doctor_content = doctor_str.split('：')[-1] + eos_token
+                    history.append(patient_content)
+                    example = ''.join(history) + '<|doctor|>'
+                    target = doctor_content
+                    outputs.append({'inputs': example, 'label': target})
+                    history.append('<|doctor|>' + doctor_content)
+                else:
+                    raise ValueError('Invalid data format.')
+    print(len(outputs))
+    with open(save_dir, 'w', encoding='utf-8') as save_file:
+        json.dump(outputs, save_file, ensure_ascii=False, indent=1)
+        save_file.close()
+
+
 if __name__ == '__main__':
-    preprocess('../../data/raw_data/psy_test.jsonl', '../../data/processed_data/psy_dev.json')
+    preprocess4finetune('../../data/raw_data/psy_train.jsonl', '../../data/wo_cot/psy_train.json')
