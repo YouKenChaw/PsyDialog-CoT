@@ -1,5 +1,7 @@
 import argparse
 import math
+import os
+
 from tqdm import tqdm
 
 import torch
@@ -9,26 +11,27 @@ from accelerate import Accelerator
 from transformers import AutoTokenizer, AutoModelForCausalLM, get_cosine_schedule_with_warmup, set_seed
 
 from dialogue.utils import print_args, SPECIAL_TOKENS, Metric
-from dialogue.datasets import PsyDialogueCotDataset, PsyDialogueDataset
+from dialogue.datasets import PsyDialogueCotDataset
 
 
 def setup_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--random_seed', type=int, default=29)
+    parser.add_argument('--phase', type=str, default='pretrain')
     parser.add_argument('--deepspeed', type=bool, default=False)
     parser.add_argument('--data_dir', type=str, default='./data')
     parser.add_argument('--log_dir', type=str, default='./logs')
     parser.add_argument('--output_dir', type=str, default='./outputs')
-    parser.add_argument('--train_bsz_per_gpu', type=int, default=2)
+    parser.add_argument('--train_bsz_per_gpu', type=int, default=12)
     parser.add_argument('--model_name_or_path', type=str, default='../.cache/baichuan2-7b-base')
     parser.add_argument('--cache_dir', type=str, default='../.cache')
     parser.add_argument('--weight_decay', type=float, default=0.1)
-    parser.add_argument('--learning_rate', type=float, default='1e-5')
+    parser.add_argument('--learning_rate', type=float, default='5e-6')
     parser.add_argument('--warmup_rates', type=float, default=0.2)
     parser.add_argument('--n_epochs', type=int, default=2)
-    parser.add_argument('--log_steps', type=int, default=20)
-    parser.add_argument('--eval_steps', type=int, default=100)
-    parser.add_argument('--save_steps', type=int, default=100)
+    parser.add_argument('--log_steps', type=int, default=1)
+    parser.add_argument('--eval_steps', type=int, default=20)
+    parser.add_argument('--save_steps', type=int, default=50)
     parser.add_argument('--pad_vocab_size_to_multiple_of', type=int, default=16)
     return parser.parse_args()
 
@@ -75,10 +78,10 @@ def main(args):
     ]
     optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=args.learning_rate)
 
-    train_set = PsyDialogueCotDataset(args.data_dir, tokenizer) if args.phase == 'finetune' else PsyDialogueDataset(args.data_dir, tokenizer)
+    train_set = PsyDialogueCotDataset(args.data_dir, tokenizer)
     train_loader = DataLoader(train_set, batch_size=args.train_bsz_per_gpu, shuffle=True, drop_last=True,
                               collate_fn=train_set.collate_fn)
-    dev_set = PsyDialogueCotDataset(args.data_dir, tokenizer, data_type='dev') if args.phase == 'finetune' else PsyDialogueDataset(args.data_dir, tokenizer, data_type='dev')
+    dev_set = PsyDialogueCotDataset(args.data_dir, tokenizer, data_type='dev')
     dev_loader = DataLoader(dev_set, batch_size=args.train_bsz_per_gpu, shuffle=False, drop_last=False,
                             collate_fn=train_set.collate_fn)
 
@@ -89,6 +92,9 @@ def main(args):
 
     global_step = 0
     metric = Metric(device=torch.cuda.current_device())
+    save_path = os.path.join(args.output_dir, f'{args.model_name_or_path.split("/")[-1]}_{args.phase}')
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
 
     with tqdm(total=num_training_steps) as pbar:
         pbar.set_description('Training:')
@@ -134,10 +140,10 @@ def main(args):
                     model.train()
 
                 if global_step % args.save_steps == 0:
-                    model.save_checkpoint(args.output_dir, global_step)
+                    model.save_checkpoint(save_path, global_step)
 
     if global_step % args.save_steps != 0:
-        model.save_checkpoint(args.output_dir, global_step)
+        model.save_checkpoint(save_path, global_step)
 
 
 if __name__ == '__main__':

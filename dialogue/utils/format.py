@@ -52,7 +52,7 @@ def preprocess4finetune(data_dir, save_dir, eos_token='</s>'):
     with jsonlines.open(data_dir) as raw_data:
         for line in raw_data:
             dialogue = line['dialog']
-            history = []
+            conversation = []
             for utterance in dialogue:
                 start_index = utterance.find('.')
                 current_turn = utterance[start_index + 1:].strip().split('\n')
@@ -61,14 +61,11 @@ def preprocess4finetune(data_dir, save_dir, eos_token='</s>'):
                 patient_str, doctor_str = current_turn[0], current_turn[-1]
                 if patient_str.split('：')[0] == '患者' and doctor_str.split('：')[0] == '治疗师':
                     patient_content = '<|patient|>' + patient_str.split('：')[-1] + eos_token
-                    doctor_content = doctor_str.split('：')[-1] + eos_token
-                    history.append(patient_content)
-                    example = ''.join(history) + '<|doctor|>'
-                    target = doctor_content
-                    outputs.append({'inputs': example, 'label': target})
-                    history.append('<|doctor|>' + doctor_content)
+                    doctor_content = '<|doctor|>' + doctor_str.split('：')[-1] + eos_token
+                    conversation.append(patient_content + doctor_content)
                 else:
                     raise ValueError('Invalid data format.')
+            outputs.append(conversation)
     print(len(outputs))
     with open(save_dir, 'w', encoding='utf-8') as save_file:
         json.dump(outputs, save_file, ensure_ascii=False, indent=1)
@@ -76,4 +73,4 @@ def preprocess4finetune(data_dir, save_dir, eos_token='</s>'):
 
 
 if __name__ == '__main__':
-    preprocess4finetune('../../data/raw_data/psy_train.jsonl', '../../data/wo_cot/psy_train.json')
+    preprocess4finetune('../../data/raw_data/psy_test.jsonl', '../../data/wo_cot/psy_dev.json')
