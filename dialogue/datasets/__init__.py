@@ -1,1 +1,1 @@
-from .psyDialogue import PsyDialogueCotDataset
+from .psyDialogue import PsyDialogueCotDataset, PsyDialogueDataset

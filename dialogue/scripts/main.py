@@ -9,7 +9,7 @@ from accelerate import Accelerator
 from transformers import AutoTokenizer, AutoModelForCausalLM, get_cosine_schedule_with_warmup, set_seed
 
 from dialogue.utils import print_args, SPECIAL_TOKENS, Metric
-from dialogue.datasets import PsyDialogueCotDataset
+from dialogue.datasets import PsyDialogueCotDataset, PsyDialogueDataset
 
 
 def setup_args():
@@ -61,8 +61,6 @@ def main(args):
         p = args.pad_vocab_size_to_multiple_of
         target_size = len(tokenizer) if not p else math.ceil(len(tokenizer) / p) * p
         model.resize_token_embeddings(target_size)
-    model.gradient_checkpoint = True
-    assert model.gradient_checkpoint is True
 
     no_decay = ['bias', 'LayerNorm.weight']
     optimizer_grouped_parameters = [
@@ -77,10 +75,10 @@ def main(args):
     ]
     optimizer = torch.optim.AdamW(optimizer_grouped_parameters, lr=args.learning_rate)
 
-    train_set = PsyDialogueCotDataset(args.data_dir, tokenizer)
+    train_set = PsyDialogueCotDataset(args.data_dir, tokenizer) if args.phase == 'finetune' else PsyDialogueDataset(args.data_dir, tokenizer)
     train_loader = DataLoader(train_set, batch_size=args.train_bsz_per_gpu, shuffle=True, drop_last=True,
                               collate_fn=train_set.collate_fn)
-    dev_set = PsyDialogueCotDataset(args.data_dir, tokenizer, data_type='dev')
+    dev_set = PsyDialogueCotDataset(args.data_dir, tokenizer, data_type='dev') if args.phase == 'finetune' else PsyDialogueDataset(args.data_dir, tokenizer, data_type='dev')
     dev_loader = DataLoader(dev_set, batch_size=args.train_bsz_per_gpu, shuffle=False, drop_last=False,
                             collate_fn=train_set.collate_fn)
 
@@ -116,7 +114,7 @@ def main(args):
                 global_step += 1
                 pbar.update(1)
                 if global_step % args.log_steps == 0 and accelerator.is_main_process:
-                    accelerator.print(f'epoch: {epoch + 1}, current step: {batch_cnt}, total_step: {len(train_loader)}, skip: {accelerator.optimizer_step_was_skipped}, loss: {round(train_loss, 5)}, acc: {round(acc, 4)}, lr: {scheduler.get_last_lr()[0]}')
+                    accelerator.print(f'epoch: {epoch + 1}, current step: {batch_cnt + 1}, total_step: {len(train_loader)}, skip: {accelerator.optimizer_step_was_skipped}, loss: {round(train_loss, 5)}, acc: {round(acc, 4)}, lr: {scheduler.get_last_lr()[0]}')
 
                 if global_step % args.eval_steps == 0:
                     torch.cuda.empty_cache()
@@ -131,7 +129,7 @@ def main(args):
                     dev_acc, dev_loss = dev_metric.get_metric()
 
                     if accelerator.is_local_main_process:
-                        accelerator.print(f'epoch: {epoch + 1}, step: {batch_cnt}, dev loss: {round(dev_loss, 5)}, dev acc: {round(dev_acc, 4)}')
+                        accelerator.print(f'epoch: {epoch + 1}, step: {batch_cnt + 1}, dev loss: {round(dev_loss, 5)}, dev acc: {round(dev_acc, 4)}')
 
                     model.train()
 

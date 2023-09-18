@@ -6,7 +6,7 @@ import torch
 from torch.utils.data import Dataset
 
 
-class PsyDialogueCotDataset(Dataset):
+class BaseDataset(Dataset):
     def __init__(self, data_dir, tokenizer, data_type='train'):
         super().__init__()
         self.data_dir = data_dir
@@ -15,6 +15,33 @@ class PsyDialogueCotDataset(Dataset):
         self.data = []
         self.no_loss_spans = []
         self.load_data()
+
+    def load_data(self):
+        raise NotImplementedError
+
+    def __getitem__(self, index):
+        raise NotImplementedError
+
+    def __len__(self):
+        return len(self.data)
+
+    def collate_fn(self, batch):
+        batch_input_ids, batch_attn_mask, batch_label = [], [], []
+        for input_ids, attn_mask, label in batch:
+            batch_input_ids.append(input_ids)
+            batch_attn_mask.append(attn_mask)
+            batch_label.append(label)
+        batch_input_ids = torch.nn.utils.rnn.pad_sequence(batch_input_ids, batch_first=True,
+                                                          padding_value=self.tokenizer.eos_token_id)
+        batch_attn_mask = torch.nn.utils.rnn.pad_sequence(batch_attn_mask, batch_first=True, padding_value=0).to(
+            torch.bool)
+        batch_label = torch.nn.utils.rnn.pad_sequence(batch_label, batch_first=True, padding_value=-100)
+        return batch_input_ids, batch_attn_mask, batch_label
+
+
+class PsyDialogueCotDataset(BaseDataset):
+    def __init__(self, data_dir, tokenizer, data_type='train'):
+        super().__init__(data_dir, tokenizer, data_type)
 
     def load_data(self):
         data_file = os.path.join(self.data_dir, f'psy_{self.data_type}_data')
@@ -58,31 +85,11 @@ class PsyDialogueCotDataset(Dataset):
             label[no_loss_span[0]: no_loss_span[1]] = -100
         return data, attn_mask, label
 
-    def collate_fn(self, batch):
-        batch_input_ids, batch_attn_mask, batch_label = [], [], []
-        for input_ids, attn_mask, label in batch:
-            batch_input_ids.append(input_ids)
-            batch_attn_mask.append(attn_mask)
-            batch_label.append(label)
-        batch_input_ids = torch.nn.utils.rnn.pad_sequence(batch_input_ids, batch_first=True, padding_value=self.tokenizer.eos_token_id)
-        batch_attn_mask = torch.nn.utils.rnn.pad_sequence(batch_attn_mask, batch_first=True, padding_value=0).to(torch.bool)
-        batch_label = torch.nn.utils.rnn.pad_sequence(batch_label, batch_first=True, padding_value=-100)
-        return batch_input_ids, batch_attn_mask, batch_label
 
-    def __len__(self):
-        return len(self.data)
-
-
-class PsyDialogueDataset(Dataset):
+class PsyDialogueDataset(BaseDataset):
     def __init__(self, data_dir, tokenizer, data_type='train'):
-        super().__init__()
-        self.data_dir = data_dir
-        self.tokenizer = tokenizer
-        self.data_type = data_type
-        self.data = []
         self.labels = []
-        self.no_loss_spans = []
-        self.load_data()
+        super().__init__(data_dir, tokenizer, data_type)
 
     def load_data(self):
         data_file = os.path.join(self.data_dir, f'psy_{self.data_type}_data')
@@ -113,3 +120,12 @@ class PsyDialogueDataset(Dataset):
                 label_ids = self.tokenizer.encode(sample['label'])
                 assert isinstance(label_ids, list) and len(label_ids) > 0
                 self.labels.append(label_ids)
+
+    def __getitem__(self, index):
+        data = copy.deepcopy(self.data[index])
+        no_loss_spans = copy.deepcopy(self.no_loss_spans[index])
+        data = torch.LongTensor(data)
+        attn_mask = torch.ones_like(data, dtype=torch.bool)
+        label = copy.deepcopy(self.labels[index])
+        label = torch.LongTensor(label)
+        return data, attn_mask, label
