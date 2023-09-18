@@ -7,5 +7,5 @@ accelerate launch --config_file ./packages/accelerate_config.yaml \
   --data_dir ./data/wo_cot \
   --deepspeed True \
   --phase finetune_wo_cot \
-  --train_bsz_per_gpu 4 \
-  --log_steps 10
+  --train_bsz_per_gpu 2 \
+  --log_steps 20
